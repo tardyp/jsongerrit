@@ -86,8 +86,11 @@ class dict2obj:
             return dict2obj(v)
         if type(v) == list:
             return [ (type(i) == dict) and dict2obj(i) or i for i in v]
-        else:
-            return v
+        if type(v) == type(""):
+            return v.encode("utf-8")
+        if type(v) == type(u""):
+            return v.encode("utf-8")
+        return v
     def has_key(self,name):
         return self._dict.has_key(name)
 class _Method(object):

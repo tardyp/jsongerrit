@@ -6,12 +6,13 @@ def get_user_name(details, id):
     for i in details.result.accounts.accounts:
         if i.has_key('fullName'):
             if i.id.id == id:
-                return repr(i.fullName)
+                return i.fullName
 def get_merger(details):
     for j in details.result.approvals:
         for i in j.approvals:
             if i.key.categoryId.id == "SUBM":
                 return get_user_name(details,i.key.accountId.id)
+    print "merger not found",details
     return ""
 
 automatic_filters = [
@@ -104,6 +105,7 @@ class CSV:
         self.csv_head = ""
         self.csv_line = ""
     def end_csv(self):
+        self.f2.write('<meta http-equiv="Content-Type" content="text/html; charset=utf-8">\n')
         self.f2.write("<html><body>")
         for k,v, in sorted([(k,v) for k,v in self.stats.items()]):
             v.piechart(self.f2)
@@ -123,7 +125,7 @@ def closedstats(gerrit):
         max_count -= len(l.result.changes)
         for i in l.result.changes:
             details = gerrit.ChangeDetailService.changeDetail({'id':i.id.id})
-            print i.id.id ,i.subject
+            print max_count,i.id.id ,i.subject
             csv.add_val("changeid",i.id.id)
             csv.add_val("subject",i.subject[:80])
             owner = get_user_name(details,details.result.change.owner.id)
@@ -132,12 +134,12 @@ def closedstats(gerrit):
             csv.add_val("merger",merger,stat_key=1)
             br = details.result.change.dest.branchName.replace("refs/heads/","")
             csv.add_val("project",details.result.change.dest.projectName.name + "/" + br ,stat_key=1)
-            csv.add_val("num_messages",len(details.result.messages),do_stats=1)
-            csv.add_val("num_non_auto_messages",count_non_auto_messages(details.result.messages),do_stats=1)
-            csv.add_val("num_approvals",len(details.result.approvals),do_stats=1)
-            csv.add_val("num_patchsets",details.result.change.nbrPatchSets,do_stats=1)
-            csv.add_val("subject_greater_than_80",len(i.subject)>80,do_stats=1)
-            csv.add_val("owner=merger",owner==merger,do_stats=1)
+            csv.add_val("num messages",len(details.result.messages),do_stats=1)
+            csv.add_val("num non auto messages",count_non_auto_messages(details.result.messages),do_stats=1)
+            csv.add_val("num approvals",len(details.result.approvals),do_stats=1)
+            csv.add_val("num patchsets",details.result.change.nbrPatchSets,do_stats=1)
+            csv.add_val("subject greater than 80",len(i.subject)>80,do_stats=1)
+            csv.add_val("owner==merger",owner==merger,do_stats=1)
             csv.end_line()
             last = i.sortKey
     csv.end_csv()
