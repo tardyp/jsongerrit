@@ -36,12 +36,14 @@
 # --------------------------------------------------------------------
 
 import urllib
+import urllib2
 import httplib
 import base64
 import simplejson
 import types
+import traceback
 import cache
-__version__ = "0.0.2"
+__version__ = "0.0.3"
 
 ID = 1
 def _gen_id():
@@ -99,205 +101,35 @@ class _Method(object):
     def __call__(self, *args):
         return dict2obj(self.__send(self.__name, args))
 
-##
-# Standard transport class for JSON-RPC over HTTP.
-# <p>
-# You can create custom transports by subclassing this method, and
-# overriding selected methods.
+from keepalive import HTTPHandler
+keepalive_handler = HTTPHandler()
+opener = urllib2.build_opener(keepalive_handler)
+urllib2.install_opener(opener)
 
-class Transport:
-    """Handles an HTTP transaction to an JSON-RPC server."""
-
-    # client identifier (may be overridden)
-    user_agent = "jsonlib.py/%s (by matt harrison)" % __version__
-    h = None
-    ##
-    # Send a complete request, and parse the response.
-    #
-    # @param host Target host.
-    # @param handler Target PRC handler.
-    # @param request_body JSON-RPC request body.
-    # @param verbose Debugging flag.
-    # @return Parsed response.
-
-    def request(self, host, handler, request_body, verbose=1,update_cache=False):
-        rsp = cache.load(host+handler+request_body)
+class urllibTransport():
+    def __init__(self,uri):
+        self.uri = uri
+    def request(self, request_body, verbose=1,update_cache=False):
+        rsp = cache.load(self.uri+request_body)
         if rsp == None or update_cache:
-            # issue JSON-RPC request
-            if self.h==None:
-                self.h = self.make_connection(host)
-            h = self.h # keep alive
-            if verbose:
-                h.set_debuglevel(1)
-            self.send_request(h, handler, request_body)
-            self.send_host(h, host)
-            self.send_user_agent(h)
-            self.send_content(h, request_body)
+            #print host, handler, request_body
+            req = urllib2.Request(url=self.uri)
 
-            rsp = h.getresponse()
-
-            if rsp.status != 200:
-                raise Exception(
-                    host + handler,
-                    rsp.status, rsp.reason,
-                    rsp.getheaders()
-                    )
-
-            self.verbose = verbose
-            rsp = self._parse_response(rsp)
-            cache.store(host+handler+request_body,rsp)
+            req.add_data(data=request_body)
+            headers =  [ ('Content-Type', 'application/json; charset=utf-8'),
+            ('Accept-Encoding', 'text'),
+            ('Accept', 'application/json,application/json,application/jsonrequest')]
+            for t,v in headers:
+                req.add_header(t,v)
+            rsp = urllib2.urlopen(req).read()
+            cache.store(self.uri+request_body,rsp)
         return simplejson.loads(rsp)
-
-    ##
-    # Get authorization info from host parameter
-    # Host may be a string, or a (host, x509-dict) tuple; if a string,
-    # it is checked for a "user:pw@host" format, and a "Basic
-    # Authentication" header is added if appropriate.
-    #
-    # @param host Host descriptor (URL or (URL, x509 info) tuple).
-    # @return A 3-tuple containing (actual host, extra headers,
-    #     x509 info).  The header and x509 fields may be None.
-
-    def get_host_info(self, host):
-
-        x509 = {}
-        if isinstance(host, types.TupleType):
-            host, x509 = host
-
-        auth, host = urllib.splituser(host)
-
-        if auth:
-            auth = base64.encodestring(urllib.unquote(auth))
-            auth = string.join(string.split(auth), "") # get rid of whitespace
-            extra_headers = [
-                ("Authorization", "Basic " + auth)
-                ]
-        else:
-            extra_headers = None
-
-        return host, extra_headers, x509
-
-    ##
-    # Connect to server.
-    #
-    # @param host Target host.
-    # @return A connection handle.
-
-    def make_connection(self, host):
-        # create a HTTP connection object from a host descriptor
-        host, extra_headers, x509 = self.get_host_info(host)
-        return httplib.HTTPConnection(host)
-
-    ##
-    # Send request header.
-    #
-    # @param connection Connection handle.
-    # @param handler Target RPC handler.
-    # @param request_body JSON-RPC body.
-
-    def send_request(self, connection, handler, request_body):
-        connection.putrequest("POST", handler)
-
-    ##
-    # Send host name.
-    #
-    # @param connection Connection handle.
-    # @param host Host name.
-
-    def send_host(self, connection, host):
-        host, extra_headers, x509 = self.get_host_info(host)
-        connection.putheader("Host", host)
-        if extra_headers:
-            if isinstance(extra_headers, DictType):
-                extra_headers = extra_headers.items()
-            for key, value in extra_headers:
-                connection.putheader(key, value)
-
-    ##
-    # Send user-agent identifier.
-    #
-    # @param connection Connection handle.
-
-    def send_user_agent(self, connection):
-        connection.putheader("User-Agent", self.user_agent)
-
-    ##
-    # Send request body.
-    #
-    # @param connection Connection handle.
-    # @param request_body JSON-RPC request body.
-
-    def send_content(self, connection, request_body):
-        connection.putheader("Accept-Encoding",	"text")
-        connection.putheader("Connection","Keep-Alive")
-        connection.putheader("Accept",	"application/json,application/json,application/jsonrequest")
-        connection.putheader("Content-Type", "application/json; charset=utf-8")
-        connection.putheader("Content-Length", str(len(request_body)))
-        connection.endheaders()
-        if request_body:
-            connection.send(request_body)
-
-    ##
-    # Parse response feed the response to parser and unmarshaller
-    #
-    # @param rsp HTTPResponse.
-    # @return Response tuple and target method.
-
-    def _parse_response(self, rsp):
-        # read response from input file/socket, and parse it
-
-        remain= int(rsp.getheader("Content-Length"))
-        data = ""
-        while remain:
-            sz = min(remain,1024)
-            response = rsp.read(sz)
-            if not response:
-                break
-            if self.verbose:
-                print "body:", repr(response)
-            data+=response
-            remain-=len(response)
-        return data
-
-##
-# Standard transport class for JSON-RPC over HTTPS.
-
-class SafeTransport(Transport):
-    """Handles an HTTPS transaction to an JSON-RPC server."""
-
-    # FIXME: mostly untested
-
-    def make_connection(self, host):
-        # create a HTTPS connection object from a host descriptor
-        # host may be a string, or a (host, x509-dict) tuple
-        host, extra_headers, x509 = self.get_host_info(host)
-        try:
-            HTTPS = httplib.HTTPSConnection
-        except AttributeError:
-            raise NotImplementedError(
-                "your version of httplib doesn't support HTTPS"
-                )
-        else:
-            return HTTPS(host, None, **(x509 or {}))
-
 
 class ServerProxy(object):
 
     def __init__(self, uri, transport=None, encoding=None,
                  verbose=None, allow_none=0,update_cache=False):
-        utype, uri = urllib.splittype(uri)
-        self.update_cache = update_cache
-        if utype not in ("http", "https"):
-            raise IOError, "Unsupported JSONRPC protocol"
-        self.__host, self.__handler = urllib.splithost(uri)
-        if not self.__handler:
-            self.__handler = "/RPC2"
-
-        if transport is None:
-            if utype == "https":
-                transport = SafeTransport()
-            else:
-                transport = Transport()
+        transport=urllibTransport(uri)
         self.__transport = transport
 
         self.__encoding = encoding
@@ -310,12 +142,18 @@ class ServerProxy(object):
 
         request = dumps(params, methodname, encoding=self.__encoding,
                         allow_none=self.__allow_none)
-        response = self.__transport.request(
-            self.__host,
-            self.__handler,
-            request,
-            verbose=self.__verbose
-            )
+        while True:
+            try:
+                response = self.__transport.request(
+                    request,
+                    verbose=self.__verbose
+                    )
+                break
+            except KeyboardInterrupt:
+                raise Exception ("stop")
+            except:
+                traceback.print_exc()
+                continue
 
         if len(response) == 1:
             response = response[0]
