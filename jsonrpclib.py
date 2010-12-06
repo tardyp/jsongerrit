@@ -6,8 +6,8 @@
 # Copyright (c) 1999-2002 by Secret Labs AB
 # Copyright (c) 1999-2002 by Fredrik Lundh
 # Copyright (c) 2006 by Matt Harrison
-# Copyright (c) 2010 by Pierre Tardy 
-#                    - moved to httplib 2.4
+# Copyright (c) 2010 by Pierre Tardy
+#                    - moved to urlib2
 #                    - use keepalive
 #                    - return objects instead if dicts
 #                    - add some headers to comply with gerrit
@@ -112,9 +112,7 @@ class urllibTransport():
     def request(self, request_body, verbose=1,update_cache=False):
         rsp = cache.load(self.uri+request_body)
         if rsp == None or update_cache:
-            #print host, handler, request_body
             req = urllib2.Request(url=self.uri)
-
             req.add_data(data=request_body)
             headers =  [ ('Content-Type', 'application/json; charset=utf-8'),
             ('Accept-Encoding', 'text'),

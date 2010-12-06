@@ -60,7 +60,7 @@ VERSION = (0, 1)
 DEBUG = 0
 HANDLE_ERRORS = 1
 
-class HTTPHandler(urllib2.HTTPHandler):
+class HTTPHandler(urllib2.HTTPHandler,urllib2.HTTPSHandler):
     def __init__(self):
         self._connections = {}
         
@@ -164,6 +164,8 @@ class HTTPHandler(urllib2.HTTPHandler):
 
     def http_open(self, req):
         return self.do_open(HTTPConnection, req)
+    def https_open(self, req):
+        return self.do_open(HTTPSConnection, req)
 
 class HTTPResponse(httplib.HTTPResponse):
 
@@ -257,7 +259,10 @@ class HTTPResponse(httplib.HTTPResponse):
 class HTTPConnection(httplib.HTTPConnection):
     # use the modified response class
     response_class = HTTPResponse
-    
+class HTTPSConnection(httplib.HTTPSConnection):
+    # use the modified response class
+    response_class = HTTPResponse
+
 #########################################################################
 #####   TEST FUNCTIONS
 #########################################################################
